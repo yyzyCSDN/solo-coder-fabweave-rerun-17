@@ -60,8 +60,7 @@ def rank_releasable(
         state = holds.get(candidate.lot_id)
         blocked = candidate.active_hold
         if state is not None:
-            expected = state.version
-            blocked = blocked or not release_decision(state, expected, now).allowed
+            blocked = blocked or not release_decision(state, expected_versions[candidate.lot_id], now).allowed
         evaluated.append(replace(candidate, active_hold=blocked))
     return rank_candidates(evaluated, now)
 

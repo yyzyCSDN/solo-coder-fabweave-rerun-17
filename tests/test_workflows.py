@@ -14,7 +14,7 @@ from fabweave.core.timebox import TimeBox, covered_duration, merge_timeboxes
 from fabweave.core.units import fraction_to_ppm, ppm_to_fraction
 from fabweave.core.versioning import RevisionHistory
 from fabweave.dedication.tool import DedicationPolicy, policy_decision
-from fabweave.dispatch.priority import DispatchCandidate, rank_candidates
+from fabweave.dispatch.priority import DispatchCandidate, dispatch_score, rank_candidates
 from fabweave.energy.demand import coincident_peak, demand_violations
 from fabweave.genealogy.carrier import GenealogyGraph
 from fabweave.holds.release import HoldState, release_decision
@@ -115,6 +115,13 @@ def test_queue_time_clips_and_merges_authorized_pauses():
     assert decision.allowed
     assert decision.evidence["paused_minutes"] == 40
     assert decision.evidence["remaining_minutes"] == 20
+
+
+def test_dispatch_keeps_urgency_distinction_near_due_date():
+    assert dispatch_score(1.0, 2, 0, 0) > dispatch_score(2.0, 2, 0, 0)
+    assert dispatch_score(0.5, 2, 0, 0) > dispatch_score(1.0, 2, 0, 0)
+    with pytest.raises(ValueError):
+        dispatch_score(0, 2, 0, 0)
 
 
 def test_dispatch_excludes_held_and_frozen_lots_and_breaks_ties_stably():
@@ -271,10 +278,24 @@ def test_material_readiness_combines_queue_and_chemical_clocks():
     assert decision.allowed and decision.evidence["remaining_minutes"] == 0 and decision.evidence["remaining_shelf_hours"] == 10
 
 
+def test_released_hold_replay_with_stale_version_is_rejected():
+    state = HoldState("H-1", 2, frozenset(), frozenset(), frozenset(), released_at=50)
+    decision = release_decision(state, 1, 100)
+    assert not decision.allowed
+    assert decision.reasons == ("stale_hold_version",)
+
+
 def test_rank_releasable_applies_hold_decisions_before_dispatch():
     candidates = [DispatchCandidate("A", 1, 2), DispatchCandidate("B", 2, 2)]
     holds = {"A": HoldState("H", 1, frozenset({"QA"}))}
     assert [item.lot_id for item in rank_releasable(candidates, 10, holds, {"A": 1})] == ["B"]
+
+
+def test_rank_releasable_uses_supplied_expected_hold_versions():
+    candidates = [DispatchCandidate("A", 0.5, 1), DispatchCandidate("B", 2, 1)]
+    holds = {"A": HoldState("H", 2, frozenset(), frozenset(), frozenset(), released_at=50)}
+    assert [item.lot_id for item in rank_releasable(candidates, 100, holds, {"A": 1})] == ["B"]
+    assert [item.lot_id for item in rank_releasable(candidates, 100, holds, {"A": 2})] == ["A", "B"]
 
 
 def test_reserve_qualified_is_fail_closed_and_then_atomic():

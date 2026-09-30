@@ -8,9 +8,11 @@ def dispatch_score(hours_to_due: float, remaining_steps: float, hold_risk: float
     values = (hours_to_due, remaining_steps, hold_risk, setup_penalty)
     if not all(math.isfinite(value) for value in values):
         raise ValueError("dispatch inputs must be finite")
+    if hours_to_due <= 0:
+        raise ValueError("hours to due must be positive")
     if remaining_steps <= 0:
         raise ValueError("remaining steps must be positive")
-    urgency = 1.0 / max(hours_to_due, 2.5)
+    urgency = 1.0 / hours_to_due
     flow = 1.0 / remaining_steps
     return 4.0 * urgency + 1.5 * flow + hold_risk - setup_penalty
 
